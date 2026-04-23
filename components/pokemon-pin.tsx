@@ -12,16 +12,16 @@ type Props = {
   onPress: () => void;
 };
 
-const BUBBLE_SIZE = 52;
+// The red "border" is a slightly larger red circle behind the white inner
+// circle. Avoiding borderWidth + borderRadius sidesteps the Android Marker
+// rasterization bug that renders only a fraction of the stroke.
+const OUTER_SIZE = 52;
+const RING_THICKNESS = 3;
+const INNER_SIZE = OUTER_SIZE - RING_THICKNESS * 2;
+const IMAGE_SIZE = INNER_SIZE - 8;
 const IS_ANDROID = Platform.OS === 'android';
 
 function PokemonPinComponent({ pin, onPress }: Props) {
-  // On Android the Marker rasterizes its children into a bitmap. If we stop
-  // tracking changes too early the snapshot freezes a half-drawn circle; if
-  // tracking never starts at all (e.g. we remount with tracksViewChanges=false)
-  // the marker captures nothing and the pin disappears. So: start tracking on,
-  // wait for the image to load, give the GPU a few frames to finish drawing
-  // the rounded border + image, then flip tracking off for a clean snapshot.
   const [tracksChanges, setTracksChanges] = useState(true);
 
   useEffect(() => {
@@ -29,16 +29,13 @@ function PokemonPinComponent({ pin, onPress }: Props) {
       setTracksChanges(false);
       return;
     }
-    // Safety net so the marker doesn't re-render forever if onLoad never fires.
     const t = setTimeout(() => setTracksChanges(false), 5000);
     return () => clearTimeout(t);
   }, []);
 
   const handleLoaded = () => {
     if (!IS_ANDROID) return;
-    // Wait a handful of frames so Android finishes compositing the rounded
-    // border before we freeze the bitmap.
-    setTimeout(() => setTracksChanges(false), 350);
+    setTimeout(() => setTracksChanges(false), 250);
   };
 
   return (
@@ -50,11 +47,11 @@ function PokemonPinComponent({ pin, onPress }: Props) {
       anchor={{ x: 0.5, y: 0.5 }}
       tracksViewChanges={tracksChanges}>
       <View
-        style={styles.container}
+        style={styles.outer}
         collapsable={false}
         renderToHardwareTextureAndroid
         shouldRasterizeIOS>
-        <View style={styles.bubble}>
+        <View style={styles.inner}>
           <Image
             source={officialArtwork(pin.pokemonId)}
             style={styles.image}
@@ -73,25 +70,24 @@ function PokemonPinComponent({ pin, onPress }: Props) {
 export const PokemonPin = memo(PokemonPinComponent);
 
 const styles = StyleSheet.create({
-  container: {
-    width: BUBBLE_SIZE,
-    height: BUBBLE_SIZE,
+  outer: {
+    width: OUTER_SIZE,
+    height: OUTER_SIZE,
+    borderRadius: OUTER_SIZE / 2,
+    backgroundColor: palette.red,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'transparent',
   },
-  bubble: {
-    width: BUBBLE_SIZE,
-    height: BUBBLE_SIZE,
-    borderRadius: BUBBLE_SIZE / 2,
+  inner: {
+    width: INNER_SIZE,
+    height: INNER_SIZE,
+    borderRadius: INNER_SIZE / 2,
     backgroundColor: palette.white,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 3,
-    borderColor: palette.red,
   },
   image: {
-    width: BUBBLE_SIZE - 16,
-    height: BUBBLE_SIZE - 16,
+    width: IMAGE_SIZE,
+    height: IMAGE_SIZE,
   },
 });
