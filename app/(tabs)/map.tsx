@@ -1,11 +1,11 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useFocusEffect } from 'expo-router';
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { MapView, type MapViewProps } from '@/components/rn-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { PokemonPin } from '@/components/pokemon-pin';
+import { PokemonPin, PokemonPinCapture } from '@/components/pokemon-pin';
 import { EmptyState } from '@/components/state-views';
 import { useLocation } from '@/hooks/use-location';
 import { useNearbyPins, type NearbyPin } from '@/hooks/use-nearby-pins';
@@ -17,6 +17,23 @@ export default function MapScreen() {
   const pins = useNearbyPins(coords, 8, 700);
   const mapRef = useRef<MapView | null>(null);
   const lastAnimatedPinIdRef = useRef<string | null>(null);
+  const [pinBitmaps, setPinBitmaps] = useState<Record<number, string>>({});
+
+  const idsToCapture = useMemo(() => {
+    if (Platform.OS !== 'android') return [];
+    const seen = new Set<number>();
+    return pins
+      .map((p) => p.pokemonId)
+      .filter((id) => {
+        if (pinBitmaps[id] || seen.has(id)) return false;
+        seen.add(id);
+        return true;
+      });
+  }, [pins, pinBitmaps]);
+
+  const handleCaptured = useCallback((id: number, uri: string) => {
+    setPinBitmaps((prev) => (prev[id] ? prev : { ...prev, [id]: uri }));
+  }, []);
 
   const zoomToPin = useCallback((pin: NearbyPin) => {
     mapRef.current?.animateCamera(
@@ -91,6 +108,18 @@ export default function MapScreen() {
 
   return (
     <View style={styles.screen}>
+      {idsToCapture.length > 0 ? (
+        <View style={styles.captureLayer} pointerEvents="none">
+          {idsToCapture.map((id) => (
+            <PokemonPinCapture
+              key={id}
+              pokemonId={id}
+              onCapture={(uri) => handleCaptured(id, uri)}
+            />
+          ))}
+        </View>
+      ) : null}
+
       <MapView
         ref={mapRef}
         style={StyleSheet.absoluteFill}
@@ -101,7 +130,12 @@ export default function MapScreen() {
         loadingBackgroundColor={palette.cream}
         loadingIndicatorColor={palette.red}>
         {pins.map((pin) => (
-          <PokemonPin key={pin.id} pin={pin} onPress={() => zoomToPin(pin)} />
+          <PokemonPin
+            key={pin.id}
+            pin={pin}
+            onPress={() => zoomToPin(pin)}
+            bitmap={pinBitmaps[pin.pokemonId]}
+          />
         ))}
       </MapView>
 
@@ -143,6 +177,12 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: palette.cream,
+  },
+  captureLayer: {
+    position: 'absolute',
+    top: -9999,
+    left: -9999,
+    opacity: 0,
   },
   centered: {
     flex: 1,
